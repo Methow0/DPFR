@@ -54,6 +54,7 @@ parser.add_argument('--epochs', type=int, default=1000, help='number of epochs t
 parser.add_argument('--lr', type=float, default=0.0005, help='learning rate')
 parser.add_argument('--save-dir', type=str, default='./experiments/GlaS_0.125/newcrop/train_2025-5-25', help='directory to save training results')
 parser.add_argument('--gpu', type=list, default=[], help='GPUs for training')
+parser.add_argument('--seed', type=int, default=42, help='random seed for reproducibility')
 def to_status(m, status):
     if hasattr(m, 'batch_type'):
         m.batch_type = status
@@ -66,6 +67,28 @@ to_warm_status = partial(to_status, status='warm_up')
 
 log_density_dict = defaultdict(list)
 
+def set_seed(seed: int, deterministic: bool = True):
+    # Python / Numpy
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+
+    # Torch
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    # CUDNN & deterministic
+    if deterministic:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+def seed_worker(worker_id: int):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+
 def main():
     global opt, best_iou, num_iter, tb_writer, logger, logger_results, args, cfg, scaler_nf, scaler,best_iou
     best_iou = 0
@@ -77,7 +100,11 @@ def main():
     opt.parse()
     opt.save_options()
     torch.backends.cudnn.enabled = False
+    set_seed(args.seed, deterministic=True)
+    g = torch.Generator()
+    g.manual_seed(args.seed)
 
+    
     tb_writer = SummaryWriter('{:s}/tb_logs'.format(opt.train['save_dir']))
 
 
@@ -153,15 +180,14 @@ def main():
         dsets2[x1] = DataFolder(dir_list, post_fix, num_channels, data_transforms[x1])
 
     train_loader = DataLoader(dsets['train'], batch_size=8, shuffle=True,
-                              num_workers=opt.train['workers'], drop_last=False)
+                              num_workers=opt.train['workers'],  worker_init_fn=seed_worker, generator=g,drop_last=False)
     train_loader1 = DataLoader(dsets2['train1'], batch_size=8, shuffle=True,
-                               num_workers=opt.train['workers'], drop_last=False)
+                               num_workers=opt.train['workers'], worker_init_fn=seed_worker, generator=g, drop_last=False)
 
-    val_loader = DataLoader(dsets['valB'], batch_size=1, shuffle=False,
+    val_loader = DataLoader(dsets['valB'], batch_size=1, worker_init_fn=seed_worker, generator=g, shuffle=False,
                             num_workers=opt.train['workers'], drop_last=True)
-    val_loader1 = DataLoader(dsets['valA'], batch_size=1, shuffle=False,
+    val_loader1 = DataLoader(dsets['valA'], batch_size=1,worker_init_fn=seed_worker, generator=g, shuffle=False,
                              num_workers=opt.train['workers'], drop_last=True)
-
 
 
 
@@ -200,7 +226,6 @@ def main():
 
 
             if (val_iou >= 0.79):
-                # val_loss1, val_pixel_acc1, val_iou1 = validate(val_loader1, model, criterion)
                 is_second = val_iou1 >= 0.79
                 cp_flag = (epoch + 1) % opt.train['checkpoint_freq'] == 0
                 save_checkpoint({
@@ -277,7 +302,7 @@ def train(train_loader, train_loader1, model, teacher_model, nf_model, optimizer
         input_var1_aug, label_u_aug, logits_u_aug = generate_unsup_data(input_var1, label_u.clone(),
                                                                             logits_u_aug.clone(), mode="cutmix")
 
-        ignore_mask = ((logits_u_aug < 0.65).long()) * 255
+        ignore_mask = ((logits_u_aug < 0.5).long()) * 255
 
 
 
@@ -341,7 +366,7 @@ def train(train_loader, train_loader1, model, teacher_model, nf_model, optimizer
                     loss_contrastive = criterion_loss(anchor_feat, pos_feat, neg_feat)
 
 
-                lambda_u = ramp_up_weight(epoch, max_epoch=1000, max_weight=1.0)  # 无标签损失最大权重为1.0
+                lambda_u = ramp_up_weight(epoch, max_epoch=1000, max_weight=1.0)  
                 lambda_pt = 0.5 * lambda_u
                 lambda_cons = 0.3 * lambda_u
                 lambda_ctr = 0.25 * lambda_u
@@ -742,4 +767,5 @@ def compute_unsupervised_loss(predict, target, ignore_mask):
     return loss
 
 if __name__ == '__main__':
+
     main()
