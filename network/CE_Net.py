@@ -437,7 +437,7 @@ class UnetDsv3(nn.Module):
 class New_Semic_Seg_Diff(nn.Module):
     def __init__(self, num_classes=3, num_channels=3):
         super(New_Semic_Seg_Diff, self).__init__()
-        resnet = get_resnet_backbone('resnet34')(pretrain=True)
+        resnet = get_resnet_backbone('resnet101')(pretrain=True)
         print("__init__, New_Semic_Seg")
         self.encoder = nn.Sequential(
             resnet.conv1,
@@ -700,7 +700,7 @@ class New_Semic_Seg_GMM(nn.Module):
 class New_Semic_Seg(nn.Module):
     def __init__(self, num_classes=3, num_channels=3):
         super(New_Semic_Seg, self).__init__()
-        resnet = get_resnet_backbone('resnet34')(pretrain=True)
+        resnet = get_resnet_backbone('resnet101')(pretrain=True)
         print("__init__, New_Semic_Seg")
         self.encoder = nn.Sequential(
             resnet.conv1,
@@ -714,18 +714,7 @@ class New_Semic_Seg(nn.Module):
             DACblock(512),
             SPPblock(512)
         )
-        # mix_norm = MixSyncBatchNorm
 
-        # self.representation = nn.Sequential(
-        #     nn.Conv2d(516, 256, kernel_size=3, stride=1, padding=1, bias=True),
-        #     nn.BatchNorm2d(256),
-        #     nn.ReLU(inplace=True),
-        #     nn.Dropout2d(0.1),
-        #     nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1, bias=True),
-        #     nn.BatchNorm2d(256),
-        #     nn.ReLU(inplace=True),
-        #     nn.Dropout2d(0.1)
-        # )
 
         self.representation = nn.Sequential(DecoderBlock(516, 256))
    
@@ -753,19 +742,18 @@ class New_Semic_Seg(nn.Module):
             return out_labeled, res_head_l1
         else:
             if adv:
-                # 有标签预测
+
                 x_l1 = self.encoder(x_l)
                 res_head_l1 = self.representation(x_l1)
                 out_fin_labeled = self.decoder0(res_head_l1)
                 out_labeled = self.decoder0_1(out_fin_labeled)
 
-                # 无标签预测
                 x_u1 = self.encoder(x_u)
                 res_head_u1 = self.representation(x_u1)
                 out_fin_unlabeled = self.decoder0(res_head_u1)
                 out_unlabeled = self.decoder0_1(out_fin_unlabeled)
 
-                # 无标签扰动增强预测
+
 
                 x_u1_pt = self.encoder(x_u.clone()).float()
                 pt = attack(x_u1_pt, label, self.representation, self.decoder0_1, nf_model, loss_flow, cfg, eps)
@@ -773,10 +761,10 @@ class New_Semic_Seg(nn.Module):
                 if torch.isnan(pt).any() or torch.isinf(pt).any():
                     print(">>> pt non-finite!", pt.min().item(), pt.max().item())
 
-                # 关键：先清理 NaN/Inf
+
                 pt = torch.nan_to_num(pt, nan=0.0, posinf=0.0, neginf=0.0)
 
-                # 关键：限制扰动幅值（eps 你本来就传了）
+
                 if eps is not None and eps > 0:
                     pt = pt.clamp(min=-eps, max=eps)
 
@@ -787,14 +775,7 @@ class New_Semic_Seg(nn.Module):
                 fts_half_pt = x_u1_pt_norm + pt
                 
                 
-                # mean = x_u1_pt.mean(dim=[2, 3], keepdim=True)
-                # std = x_u1_pt.std(dim=[2, 3], keepdim=True) + 1e-6
-                # x_u1_pt_norm = (x_u1_pt - mean) / std
 
-                # print("pt.max:",pt.max())
-                # print("pt.min:", pt.min())
-                # print("x_u1_pt_norm.max:", x_u1_pt_norm.max())
-                # print("x_u1_pt_norm.min:", x_u1_pt_norm.min())
                 fts_half_pt = x_u1_pt_norm + pt
                 out_fts_half_pt = self.representation(fts_half_pt)
                 out_fin_unlabeled_pt = self.decoder0(out_fts_half_pt)
@@ -806,13 +787,13 @@ class New_Semic_Seg(nn.Module):
                 return out_labeled,out_unlabeled, out_all_unlabeled_pt, res_head_u1
 
             else:
-                # 有标签预测
+            
                 x_l1 = self.encoder(x_l)
                 res_head_l1 = self.representation(x_l1)
                 out_fin_labeled = self.decoder0(res_head_l1)
                 out_labeled = self.decoder0_1(out_fin_labeled)
 
-                # 无标签预测
+              
                 x_u1 = self.encoder(x_u)
                 res_head_u1 = self.representation(x_u1)
                 out_fin_unlabeled = self.decoder0(res_head_u1)
@@ -912,82 +893,7 @@ class Our_Semic_Seg(nn.Module):
             return out1, out_sdm, res_head,out2,out_sdm2
 
 
-class Full_CE_Net_(nn.Module):
-    def __init__(self, num_classes=3, num_channels=3):
-        super(Full_CE_Net_, self).__init__()
-        print("Full_CE_Net_")
-        filters = [64, 128, 256, 512]
-        # resnet = models.resnet34(pretrained=True)
-        resnet = get_resnet_backbone('resnet34')(pretrain=True)
-        # self.corp = Compose([
-        #     Resize(26),
-        #     ToTensor(),
-        #     Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),])
 
-        self.firstconv = resnet.conv1
-        self.firstbn = resnet.bn1
-        self.firstrelu = resnet.relu
-        self.firstmaxpool = resnet.maxpool
-        self.encoder1 = resnet.layer1
-        self.encoder2 = resnet.layer2
-        self.encoder3 = resnet.layer3
-        self.encoder4 = resnet.layer4
-
-        self.dblock = DACblock(512)
-        self.spp = SPPblock(512)
-
-        self.decoder4 = DecoderBlock(516, filters[2])
-
-        self.decoder3 = DecoderBlock(filters[2], filters[1])
-        self.decoder2 = DecoderBlock(128, filters[0])
-        self.decoder1 = DecoderBlock(filters[0], filters[0])
-        self.dsv1 = UnetDsv3(128, out_size=3, scale_factor=(416, 416))
-        self.dsv2 = UnetDsv3(64, out_size=3, scale_factor=(416, 416))
-
-        self.finaldeconv1 = nn.ConvTranspose2d(filters[0], 32, 4, 2, 1)
-        self.finalrelu1 = nonlinearity
-        self.finalconv2 = nn.Conv2d(32, 32, 3, padding=1)
-        self.finalrelu2 = nonlinearity
-
-        self.finalconv4 = nn.Conv2d(32, 1, 3, padding=1)
-        self.tanh = nn.Tanh();
-
-        self.finalconv3 = nn.Conv2d(32, num_classes, 3, padding=1)
-
-    def forward(self, x):
-        # Encoder
-        x = self.firstconv(x)
-        x = self.firstbn(x)
-        x = self.firstrelu(x)
-        x = self.firstmaxpool(x)
-        e1 = self.encoder1(x)
-        e2 = self.encoder2(e1)
-        e3 = self.encoder3(e2)
-        e4 = self.encoder4(e3)
-
-        # Center
-        e4 = self.dblock(e4)
-        e4 = self.spp(e4)
-
-        # Decoder
-
-        d4 = self.decoder4(e4) + e3
-        d3 = self.decoder3(d4) + e2
-        out2 = self.dsv1(d3)
-        d2 = self.decoder2(d3) + e1
-        d1 = self.decoder1(d2)
-        out1 = self.dsv2(d1)
-
-        out = self.finaldeconv1(d1)
-        out = self.finalrelu1(out)
-        out = self.finalconv2(out)
-        out_mid = self.finalrelu2(out)
-        out_sdm = self.finalconv4(out_mid)
-        out_sdm = self.tanh(out_sdm)
-        out_sdm= F.interpolate(out_sdm,size=(512,512),mode='bilinear',align_corners=True)
-
-        output = self.finalconv3(out_mid )
-        return output
 
 #        return output,out_sdm
 class CE_Net_(nn.Module):
@@ -1135,340 +1041,6 @@ class CE_Net_(nn.Module):
 
             return out,out_u
 
-class Our_CE_Net_(nn.Module):
-    def __init__(self, num_classes=3, num_channels=3):
-        super(Our_CE_Net_, self).__init__()
-        print("Semi My_version5.0")
-        filters = [64, 128, 256, 512]
-        # resnet = models.resnet34(pretrained=True)
-        resnet = get_resnet_backbone('resnet34')(pretrain=True)
-        self.deeplabv3 = DeepLab()
-
-        self.firstconv = resnet.conv1
-        self.firstbn = resnet.bn1
-        self.firstrelu = resnet.relu
-        self.firstmaxpool = resnet.maxpool
-        self.encoder1 = resnet.layer1
-        self.encoder2 = resnet.layer2
-        self.encoder3 = resnet.layer3
-        # self.encoder4 = resnet.layer4
-
-        # self.conv1 = conv1x1(112,64,1)
-        self.rfb1 = BasicRFB_a(112, 48)
-        self.rfb2 = BasicRFB_a(128, 48)
-        self.rfb3 = BasicRFB_a(512, 48)
-        self.blockconv = nn.Sequential(
-            nn.Conv2d(256, 48, 1, bias=False),
-            nn.BatchNorm2d(48),
-            nn.ELU(inplace=True)
-        )
-
-        self.blockconv0 = nn.Conv2d(48, 48, 3, padding=1, stride=1)
-        self.blockconv_ = nn.Conv2d(96, 96, 3, padding=1, stride=1)
-        self.blockconv1 = nn.Conv2d(48, 48, kernel_size=(7, 1), padding=(3, 0), stride=1)
-        self.blockconv2 = nn.Conv2d(48, 48, kernel_size=(1, 7), padding=(0, 3), stride=1)
-        self.blockconv3 = nn.Conv2d(96, 48, 1, padding=0, stride=1)
-
-        self.assp1 = MY_ASPP(112)
-        self.assp2 = MY_ASPP(512)
-        self.bat1 = SAD(96)
-        self.bat2 = SAD(144)
-        # self.bat4 = SAD(512)
-
-        # self.decoder4 = my_up(256, 64)
-        # self.decoder3 = my_up1(128, 64)
-        # self.decoder2 = my_up1(64, 32)
-        # self.decoder2 = DecoderBlock(filters[0], filters[0])
-        self.dsv1 = UnetDsv3(96, out_size=3, scale_factor=(512, 512))
-        self.dsv2 = UnetDsv3(144, out_size=3, scale_factor=(512, 512))
-        # self.dsv3 = UnetDsv3(64, out_size=3, scale_factor=(416, 416))
-
-        self.finaldeconv1 = nn.ConvTranspose2d(144, 32, 4, 2, 1)
-        self.finalrelu1 = nonlinearity
-        self.finalconv2 = nn.Conv2d(32, 32, 3, padding=1)
-        self.finalrelu2 = nonlinearity
-        self.finalconv4 = nn.Conv2d(32, 1, 3, padding=1)
-        self.tanh = nn.Tanh();
-        self.finalconv3 = nn.Conv2d(32, num_classes, 3, padding=1)
-
-    def forward(self, x):
-
-        high_level_features, low_level_features = self.deeplabv3(x)
-
-        x1 = self.firstconv(x)
-        x1 = self.firstbn(x1)
-        x1 = self.firstrelu(x1)
-        x1 = self.firstmaxpool(x1)
-        xe1 = self.encoder1(x1)
-        xe2 = self.encoder2(xe1)
-        xe3 = self.encoder3(xe2)
-
-        xe1 = torch.cat([xe1, low_level_features], dim=1)
-        xe1 = self.assp1(xe1)
-
-        xe3 = torch.cat([xe3, high_level_features], dim=1)
-        xe3 = self.assp2(xe3)
-
-
-        xe1 = self.rfb1(xe1)
-        xe2 = self.rfb2(xe2)
-        xe3 = self.rfb3(xe3)
-
-        xde3 = self.blockconv0(xe3)
-        xde3 = F.interpolate(xde3, size=xe2.size()[2:], mode='bilinear', align_corners=True)
-        xde3_ = self.blockconv3(torch.cat([self.blockconv1(xde3), self.blockconv2(xde3)], dim=1))
-        xde3x = torch.sigmoid(xde3_) * xe2
-        xde3 = self.bat1(torch.cat([xde3x, xde3], dim=1))
-        out2 = self.dsv1(xde3)
-
-        xde2 = self.blockconv0(xe2)
-        xde2 = F.interpolate(xde2, size=xe1.size()[2:], mode='bilinear', align_corners=True)
-        xde2_ = self.blockconv3(torch.cat([self.blockconv1(xde2), self.blockconv2(xde2)], dim=1))
-        xde2x = torch.sigmoid(xde2_) * xe1
-        xde3 = F.interpolate(xde3, size=xe1.size()[2:], mode='bilinear', align_corners=True)
-        xde2 = self.bat2(torch.cat([xde3, xde2x], dim=1))
-        out1 = self.dsv2(xde2)
-
-        xout = self.finaldeconv1(xde2)
-        xout = self.finalrelu1(xout)
-        xout = self.finalconv2(xout)
-        xout_s = self.finalrelu2(xout)
-
-
-        out_s = self.finalconv4(xout_s)
-        out_s = F.interpolate(out_s,size=(512,512),mode='bilinear',align_corners=True)
-        out_s = self.tanh(out_s)
-
-        xout = self.finalconv3(xout_s)
-        xout = F.interpolate(xout, size=(512, 512), mode='bilinear', align_corners=True)
-
-        return out2, out1, xout, out_s
-class CE_Net_WithAttion(nn.Module):
-    def __init__(self, num_classes=3, out_size=(416,416)):
-        super(CE_Net_WithAttion, self).__init__()
-        filters = [64, 128, 256, 512]
-        self.out_size =out_size
-        self.conv1 = nn.Conv2d(6,3,3,padding=1)
-        # resnet = models.resnet34(pretrained=True)
-        resnet = get_resnet_backbone('resnet34')(pretrain=True)
-        self.firstconv = resnet.conv1
-        self.firstbn = resnet.bn1
-        self.firstrelu = resnet.relu
-        self.firstmaxpool = resnet.maxpool
-        self.encoder1 = resnet.layer1
-        self.encoder2 = resnet.layer2
-        self.encoder3 = resnet.layer3
-        self.encoder4 = resnet.layer4
-
-        self.dblock = DACblock(512)
-        self.spp = SPPblock(512)
-
-        self.decoder4 = DecoderBlock(516, filters[2])
-        self.att1 = Attention_block(filters[2],filters[2],filters[1])
-
-        self.decoder3 = DecoderBlock(filters[2], filters[1])
-        self.att2 = Attention_block(filters[1],filters[1],filters[0])
-
-        self.decoder2 = DecoderBlock(filters[1], filters[0])
-        self.att3 = Attention_block(filters[0],filters[0],32)
-
-        self.decoder1 = DecoderBlock(filters[0], filters[0])
-
-
-
-
-        self.finaldeconv1 = nn.ConvTranspose2d(filters[0], 32, 4, 2, 1)
-        self.finalrelu1 = nonlinearity
-        self.finalconv2 = nn.Conv2d(32, 32, 3, padding=1)
-        self.finalrelu2 = nonlinearity
-        self.finalconv3 = nn.Conv2d(32, num_classes, 3, padding=1)
-
-    def forward(self, x):
-        # Encoder
-        # x = torch.cat([x,self.out1(x)],dim=1)
-        # x = self.conv1(x)
-        x = self.firstconv(x)
-        x = self.firstbn(x)
-        x = self.firstrelu(x)
-        x = self.firstmaxpool(x)
-        e1 = self.encoder1(x)
-        e2 = self.encoder2(e1)
-        e3 = self.encoder3(e2)
-        e4 = self.encoder4(e3)
-
-        # Center
-        e4 = self.dblock(e4)
-        e4 = self.spp(e4)
-
-        # Decoder
-        d4 = self.decoder4(e4) + self.att1(g=self.decoder4(e4),x=e3)
-
-        d3 = self.decoder3(d4) + self.att2(g=self.decoder3(d4),x=e2)
-        d2 = self.decoder2(d3) + self.att3(g=self.decoder2(d3),x=e1)
-        d1 = self.decoder1(d2)
-
-        out = self.finaldeconv1(d1)
-        out = self.finalrelu1(out)
-        out = self.finalconv2(out)
-        out = self.finalrelu2(out)
-        out = self.finalconv3(out)
-
-        return out
-class CE_Net_CBAM(nn.Module):
-    def __init__(self, num_classes=3, num_channels=3):
-        super(CE_Net_CBAM, self).__init__()
-        print("构造CE_Net_")
-        filters = [64, 128, 256, 512]
-        # resnet = models.resnet34(pretrained=True)
-        resnet = get_resnet_backbone('resnet34')(pretrain=True)
-        self.firstconv = resnet.conv1
-        self.firstbn = resnet.bn1
-        self.firstrelu = resnet.relu
-        self.firstmaxpool = resnet.maxpool
-        self.encoder1 = resnet.layer1
-        self.encoder2 = resnet.layer2
-        self.encoder3 = resnet.layer3
-        self.encoder4 = resnet.layer4
-
-        self.dblock = DACblock(512)
-        self.spp = SPPblock(512)
-
-        self.decoder4 = DecoderBlock(516, filters[2])
-        self.ca = ChannelAttention(filters[2])
-        self.sa = SpatialAttention()
-
-        self.decoder3 = DecoderBlock(filters[2], filters[1])
-        self.ca1 = ChannelAttention(filters[1])
-        self.sa1 = SpatialAttention()
-
-        self.decoder2 = DecoderBlock(filters[1], filters[0])
-        self.ca2 = ChannelAttention(filters[0])
-        self.sa2 = SpatialAttention()
-
-        self.decoder1 = DecoderBlock(filters[0], filters[0])
-
-        self.finaldeconv1 = nn.ConvTranspose2d(filters[0], 32, 4, 2, 1)
-        self.finalrelu1 = nonlinearity
-        self.finalconv2 = nn.Conv2d(32, 32, 3, padding=1)
-        self.finalrelu2 = nonlinearity
-        self.finalconv3 = nn.Conv2d(32, num_classes, 3, padding=1)
-
-    def forward(self, x):
-        # Encoder
-        x = self.firstconv(x)
-        x = self.firstbn(x)
-        x = self.firstrelu(x)
-        x = self.firstmaxpool(x)
-        e1 = self.encoder1(x)
-        e2 = self.encoder2(e1)
-        e3 = self.encoder3(e2)
-        e4 = self.encoder4(e3)
-
-        # Center
-        e4 = self.dblock(e4)
-        e4 = self.spp(e4)
-
-        # Decoder
-        d4 = self.decoder4(e4) + self.sa(self.ca(e3)*e3)*(self.sa(e3)*e3)
-        d3 = self.decoder3(d4) + self.sa1(self.ca1(e2)*e2)*(self.sa1(e2)*e2)
-        d2 = self.decoder2(d3) + self.sa2(self.ca2(e1)*e1)*(self.sa2(e1)*e1)
-        d1 = self.decoder1(d2)
-
-        out = self.finaldeconv1(d1)
-        out = self.finalrelu1(out)
-        out = self.finalconv2(out)
-        out = self.finalrelu2(out)
-        out = self.finalconv3(out)
-
-        return out
-class CE_Net_WithAttion_scale_atten_convblock(nn.Module):
-    def __init__(self, num_classes=3, out_size=(416,416)):
-        super(CE_Net_WithAttion_scale_atten_convblock, self).__init__()
-        print("CE_Net_WithAttion_scale_atten_convblock")
-        filters = [64, 128, 256, 512]
-        self.out_size =out_size
-        # resnet = models.resnet34(pretrained=True)
-        resnet = get_resnet_backbone('resnet34')(pretrain=True)
-        self.firstconv = resnet.conv1
-        self.firstbn = resnet.bn1
-        self.firstrelu = resnet.relu
-        self.firstmaxpool = resnet.maxpool
-        self.encoder1 = resnet.layer1
-        self.encoder2 = resnet.layer2
-        self.encoder3 = resnet.layer3
-        self.encoder4 = resnet.layer4
-
-        self.dblock = DACblock(512)
-        self.spp = SPPblock(512)
-
-        self.decoder4 = DecoderBlock(516, filters[2])
-        self.att1 = Attention_block(filters[2],filters[2],filters[1])
-
-        self.decoder3 = DecoderBlock(filters[2], filters[1])
-        self.att2 = Attention_block(filters[1],filters[1],filters[0])
-
-        self.decoder2 = DecoderBlock(filters[1], filters[0])
-        self.att3 = Attention_block(filters[0],filters[0],32)
-
-        self.decoder1 = DecoderBlock(filters[0], filters[0])
-        # deep supervision
-        self.dsv4 = UnetDsv3(in_size=filters[2], out_size=4, scale_factor=self.out_size)
-        self.dsv3 = UnetDsv3(in_size=filters[1], out_size=4, scale_factor=self.out_size)
-        self.dsv2 = UnetDsv3(in_size=filters[0], out_size=4, scale_factor=self.out_size)
-        self.dsv1 = nn.Sequential(
-            nn.Conv2d(in_channels=filters[0], out_channels=4, kernel_size=1),
-            nn.Upsample(size=(416,416), mode='bilinear'))
-
-        self.scale_att = scale_atten_convblock(in_size=16, out_size=4)
-        self.final = nn.Sequential(nn.Conv2d(4, 3, kernel_size=1))
-
-        # self.finaldeconv1 = nn.ConvTranspose2d(filters[0], 32, 4, 2, 1)
-        # self.finalrelu1 = nonlinearity
-        # self.finalconv2 = nn.Conv2d(32, 32, 3, padding=1)
-        # self.finalrelu2 = nonlinearity
-        # self.finalconv3 = nn.Conv2d(32, num_classes, 3, padding=1)
-
-    def forward(self, x):
-        # Encoder
-        x = self.firstconv(x)
-        x = self.firstbn(x)
-        x = self.firstrelu(x)
-        x = self.firstmaxpool(x)
-        e1 = self.encoder1(x)
-        e2 = self.encoder2(e1)
-        e3 = self.encoder3(e2)
-        e4 = self.encoder4(e3)
-
-        # Center
-        e4 = self.dblock(e4)
-        e4 = self.spp(e4)
-
-        # Decoder
-        d4 = self.decoder4(e4) + self.att1(g=self.decoder4(e4),x=e3)
-        # Deep Supervision
-        # print(d4.shape)
-        dsv4 = self.dsv4(d4)
-        d3 = self.decoder3(d4) + self.att2(g=self.decoder3(d4),x=e2)
-        dsv3 = self.dsv3(d3)
-        d2 = self.decoder2(d3) + self.att3(g=self.decoder2(d3),x=e1)
-        dsv2 = self.dsv2(d2)
-        d1 = self.decoder1(d2)
-        dsv1 = self.dsv1(d1)
-        # print(dsv4.shape)
-        # print(dsv3.shape)
-        # print(dsv2.shape)
-        # print(dsv1.shape)
-        dsv_cat = torch.cat([dsv1, dsv2, dsv3, dsv4], dim=1)
-        out = self.scale_att(dsv_cat)
-        out = self.final(out)
-        # out = self.finaldeconv1(out)
-        # out = self.finalrelu1(out)
-        # out = self.finalconv2(out)
-        # out = self.finalrelu2(out)
-        # out = self.finalconv3(out)
-
-        return out
-
 
 
 
@@ -1571,471 +1143,6 @@ class UNet(nn.Module):
         # x = self.relu(x)
         return x
 
-class CE_Net_WithAttion_mutilpath(nn.Module):
-    def __init__(self, num_classes=3, out_size=(416,416)):
-        super(CE_Net_WithAttion_mutilpath, self).__init__()
-        print("CE_Net_WithAttion_mutilpath")
-        filters = [64, 128, 256, 512]
-        self.out_size =out_size
-
-        self.out = deeplabv3plus_resnet101()
-
-
-        # resnet = models.resnet34(pretrained=True)
-        resnet = get_resnet_backbone('resnet34')(pretrain=True)
-        self.firstconv = resnet.conv1
-        self.firstbn = resnet.bn1
-        self.firstrelu = resnet.relu
-        self.firstmaxpool = resnet.maxpool
-        self.encoder1 = resnet.layer1
-        self.encoder2 = resnet.layer2
-        self.encoder3 = resnet.layer3
-        self.encoder4 = resnet.layer4
-
-        self.dblock = DACblock(512)
-        self.spp = SPPblock(512)
-
-        self.decoder4 = DecoderBlock(516, filters[2])
-        self.att1 = Attention_block(filters[2],filters[2],filters[1])
-
-        self.decoder3 = DecoderBlock(filters[2], filters[1])
-        self.att2 = Attention_block(filters[1],filters[1],filters[0])
-
-        self.decoder2 = DecoderBlock(filters[1], filters[0])
-        self.att3 = Attention_block(filters[0],filters[0],32)
-
-        self.decoder1 = DecoderBlock(filters[0], filters[0])
-        # deep supervision
-        # self.dsv4 = UnetDsv3(in_size=filters[2], out_size=4, scale_factor=self.out_size)
-        # self.dsv3 = UnetDsv3(in_size=filters[1], out_size=4, scale_factor=self.out_size)
-        # self.dsv2 = UnetDsv3(in_size=filters[0], out_size=4, scale_factor=self.out_size)
-        # self.dsv1 = nn.Sequential(
-        #     nn.Conv2d(in_channels=filters[0], out_channels=4, kernel_size=1),
-        #     nn.Upsample(size=(416,416), mode='bilinear'))
-        # self.gp = nn.Sequential(
-        #     nn.Conv2d(64,16,kernel_size=3,padding=1),
-        #     nn.BatchNorm2d(16),
-        #     nn.ReLU(inplace=True)
-        # )
-        # self.scale_att = scale_atten_convblock(in_size=16, out_size=4)
-        #
-        # self.final = nn.Sequential(nn.Conv2d(4, 3, kernel_size=1))
-
-
-        # self.finaldeconv1 = nn.ConvTranspose2d(filters[0], 32, 4, 2, 1)
-        self.finalrelu1 = nonlinearity
-        self.finalconv2 = nn.Conv2d(112, 32, 3, padding=1)
-        self.finalrelu2 = nonlinearity
-        self.finalconv3 = nn.Conv2d(32, num_classes, 3, padding=1)
-
-    def forward(self, x):
-        # Encoder
-        s = self.out(x)
-        # print(s.shape)
-        x = self.firstconv(x)
-        x = self.firstbn(x)
-        x = self.firstrelu(x)
-        x = self.firstmaxpool(x)
-        e1 = self.encoder1(x)
-        e2 = self.encoder2(e1)
-        e3 = self.encoder3(e2)
-        e4 = self.encoder4(e3)
-
-        # Center
-        e4 = self.dblock(e4)
-        e4 = self.spp(e4)
-
-        # Decoder
-        d4 = self.decoder4(e4) + self.att1(g=self.decoder4(e4),x=e3)
-        # Deep Supervision
-        # print(d4.shape)
-        # dsv4 = self.dsv4(d4)
-        # 256
-        d3 = self.decoder3(d4) + self.att2(g=self.decoder3(d4),x=e2)
-        # dsv3 = self.dsv3(d3)
-        d2 = self.decoder2(d3) + self.att3(g=self.decoder2(d3),x=e1)
-        # dsv2 = self.dsv2(d2)
-        d1 = self.decoder1(d2)
-        # dsv1 = self.dsv1(d1)
-        # print(dsv4.shape)
-        # print(dsv3.shape)
-        # print(dsv2.shape)
-        # print(dsv1.shape)
-        # dsv_cat = torch.cat([dsv1, dsv2, dsv3, dsv4,s], dim=1)
-        # dsv_cat = self.gp(dsv_cat)
-        # out = self.scale_att(dsv_cat)
-        # out = self.final(out)
-        out = F.interpolate(d1,size=(416,416),mode='bilinear', align_corners=True)
-        out = torch.cat([out,s],dim=1)
-        # out = self.finaldeconv1(d1)
-        out = self.finalrelu1(out)
-        out = self.finalconv2(out)
-        out = self.finalrelu2(out)
-        out = self.finalconv3(out)
-
-        return out
-
-
-class Our_Net_V1(nn.Module):
-    def __init__(self, num_classes=3):
-        super(Our_Net_V1, self).__init__()
-        print("Construct Our_Net_V2")
-        filters = [64, 128, 256, 512]
-        resnet = get_resnet_backbone('resnet34')(pretrain=True)
-
-        self.deeplabv3 = DeepLab()
-        # self.mynet = My_CE_Net_()
-
-        self.firstconv = resnet.conv1
-        self.firstbn = resnet.bn1
-        self.firstrelu = resnet.relu
-        self.firstmaxpool = resnet.maxpool
-        self.encoder1 = resnet.layer1
-        self.encoder2 = resnet.layer2
-        self.encoder3 = resnet.layer3
-        self.encoder4 = resnet.layer4
-
-        self.block1 = MY_ASPP(64)
-        self.block2 = MY_ASPP(256)
-        self.block3 = MY_ASPP(512)
-
-        self.cbam1 = CBAM(48, reduction_ratio=16)
-        self.cbam2 = CBAM(256)
-
-        self.ca1 = ChannelAttention(48)
-        self.sa1 = SpatialAttention()
-        self.ca2 = ChannelAttention(48)
-        self.sa2 = SpatialAttention()
-        # self.cbam3 = CBAM(96)
-        # self.cbam4 = CBAM(144)
-        self.dsv1 = UnetDsv3(96, out_size=3, scale_factor=(416,416))
-        self.dsv2 = UnetDsv3(144, out_size=3, scale_factor=(416, 416))
-        self.dsv3 = UnetDsv3(32, out_size=3, scale_factor=(416, 416))
-        self.scale = my_scale_atten_convblock(in_size=9,out_size=4)
-
-        # self.avg_pol = nn.AdaptiveAvgPool2d((1, 1))
-        # self.sgm = nn.Sigmoid()
-        self.blockconv = nn.Sequential(
-            nn.Conv2d(256,48,1,bias=False),
-            nn.BatchNorm2d(48),
-            nn.ELU(inplace=True)
-        )
-        # self.conv1 = conv1x1(256*3,256)
-        # self.conv2 = conv1x1(48 * 3, 48)
-
-        self.decoderconv = nn.Sequential(
-            nn.Conv2d(48,48,3,padding=1,stride=1),
-            nn.BatchNorm2d(48),
-            nn.ELU(inplace=True))
-
-
-        # self.finaldeconv1 = nn.ConvTranspose2d(144, 32, 4, 2, 1)
-        self.finaldeconv1 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-            nn.Conv2d(144,32,3,padding=1),
-            nn.ELU(inplace=True),
-            nn.Conv2d(32, 32, 3, padding=1),
-            nn.ELU(inplace=True)
-        )
-        # self.finalrelu1 = nonlinearity
-        # self.finalconv2 = nn.Conv2d(32, 32, 3, padding=1)
-        # self.finalrelu2 = nonlinearity
-        self.finalconv3 = conv1x1(4,3,stride=1)
-        # self.finalconv3 = nn.Conv2d(32, num_classes, 3, padding=1)
-
-    def forward(self, x):
-
-        # Encoder
-        high_level_features, low_level_features = self.deeplabv3(x)
-        # print("low_level_features:",low_level_features.shape)
-        # print("high_level_features:", high_level_features.shape)
-
-        x = self.firstconv(x)
-        x = self.firstbn(x)
-        x = self.firstrelu(x)
-        x = self.firstmaxpool(x)
-        e1 = self.encoder1(x)
-        e2 = self.encoder2(e1)
-        e3 = self.encoder3(e2)
-        e4 = self.encoder4(e3)
-
-        # Center
-        d1 = self.block1(e1)
-        d2 = self.block2(e3)
-        d3 = self.block3(e4)
-
-
-        # g1 = self.avg_pol(d1)
-        # g1 = self.blockconv(g1)
-        d1 = self.blockconv(d1)
-        # o1 = (low_level_features+d1)*self.sgm(g1)
-        d1 = low_level_features + d1
-        d1 = d1 + self.cbam1(d1)
-
-
-        d2 = self.blockconv(d2)
-
-        d3 = F.interpolate(d3, size=high_level_features.size()[2:],mode='bilinear', align_corners=True)
-        # g3 = self.avg_pol(d3)
-        # g3 = self.sgm(g3)
-        # o3 = g3*(high_level_features+d3)
-        d3 = high_level_features + d3
-        d3 = d3 + self.cbam2(d3)
-        d3 = self.blockconv(d3)
-
-
-
-        p1 = self.decoderconv(d3)
-        p2 = F.interpolate(d3, size=d2.size()[2:], mode='bilinear', align_corners=True)
-        p3 = self.ca1(p2)*self.sa1(d2);
-        p3 = F.interpolate(p3, size=d1.size()[2:],mode='bilinear', align_corners=True)
-
-        p4 = F.interpolate(p1,size=d1.size()[2:],mode='bilinear', align_corners=True)
-
-
-        p5 = torch.cat([p3,p4],dim=1)
-        out3 = self.dsv1(p5)
-
-
-        s = self.decoderconv(d2)
-        s1 =  F.interpolate(s,size=d1.size()[2:],mode='bilinear', align_corners=True)
-
-        s2 = self.ca2(s1)*self.sa2(d1)
-        s3 = torch.cat([s2,p5],dim=1)
-        out2 = self.dsv2(s3)
-        # Decoder
-
-        out = self.finaldeconv1(s3)
-        out1 = self.dsv3(out)
-        # out = self.finalrelu1(out)
-        # out = self.finalconv2(out)
-        # out = self.finalrelu2(out)
-        out = torch.cat([out1,out2,out3],dim=1)
-        out = self.scale(out)
-        out = self.finalconv3(out)
-        # out = F.interpolate(out, size=(416,416), mode='bilinear', align_corners=True)
-        return [out,out1,out2,out3]
-
-class Our_Net_V3_(nn.Module):
-    def __init__(self, num_classes=3):
-        super(Our_Net_V3_, self).__init__()
-        print("Construct Our_Net_V3_ ")
-        filters = [64, 128, 256, 512]
-        resnet = get_resnet_backbone('resnet34')(pretrain=True)
-
-        self.deeplabv3 = DeepLab()
-        # self.mynet = My_CE_Net_()
-
-        self.firstconv = resnet.conv1
-        self.firstbn = resnet.bn1
-        self.firstrelu = resnet.relu
-        self.firstmaxpool = resnet.maxpool
-        self.encoder1 = resnet.layer1
-        self.encoder2 = resnet.layer2
-        self.encoder3 = resnet.layer3
-        self.encoder4 = resnet.layer4
-
-        # self.block1 = ASPP(64,atrous_rates=[1,12, 24, 36])
-        # self.block2 = ASPP(256,atrous_rates=[1,12, 24, 36])
-        # self.block3 = ASPP(512,atrous_rates=[1,12, 24, 36])
-        self.block1 = ASPP(64)
-        self.block2 = ASPP(256)
-        self.block3 = ASPP(512)
-
-        self.cbam1 = CBAM(48, reduction_ratio=16)
-
-        self.cbam2 = CBAM(256)
-
-        self.cbam3 = CBAM(96)
-        self.cbam4 = CBAM(144)
-        self.dsv1 = UnetDsv3(96, out_size=3, scale_factor=(416,416))
-        self.dsv2 = UnetDsv3(144, out_size=3, scale_factor=(416, 416))
-        self.scale = my_scale_atten_convblock(in_size=6, out_size=4)
-        self.conv1 = conv1x1(4,3,1)
-
-        self.blockconv = nn.Sequential(
-            nn.Conv2d(256,48,1,bias=False),
-            nn.BatchNorm2d(48),
-            nn.ELU(inplace=True)
-        )
-
-        self.decoderconv = nn.Sequential(
-            nn.Conv2d(48,48,3,padding=1,stride=1),
-            nn.BatchNorm2d(48),
-            nn.ELU(inplace=True))
-
-
-        # self.finaldeconv1 = nn.ConvTranspose2d(144, 32, 4, 2, 1)
-        self.finaldeconv1 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-            nn.Conv2d(144,32,3,padding=1)
-        )
-        self.finalrelu1 = nonlinearity
-        self.finalconv2 = nn.Conv2d(32, 32, 3, padding=1)
-        self.finalrelu2 = nonlinearity
-        self.finalconv3 = nn.Conv2d(32, num_classes, 3, padding=1)
-
-    def forward(self, x):
-
-        # Encoder
-        high_level_features, low_level_features = self.deeplabv3(x)
-        # print("low_level_features:",low_level_features.shape)
-        # print("high_level_features:", high_level_features.shape)
-
-        x = self.firstconv(x)
-        x = self.firstbn(x)
-        x = self.firstrelu(x)
-        x = self.firstmaxpool(x)
-        e1 = self.encoder1(x)
-        e2 = self.encoder2(e1)
-        e3 = self.encoder3(e2)
-        e4 = self.encoder4(e3)
-
-        # Center
-        d1 = self.block1(e1)
-        d2 = self.block2(e3)
-        d3 = self.block3(e4)
-
-        d1 = self.blockconv(d1)
-        d1 = low_level_features+d1
-        d1 = d1 + self.cbam1(d1)
-
-
-        d2 = self.blockconv(d2)
-        d3 = F.interpolate(d3, size=high_level_features.size()[2:],mode='bilinear', align_corners=True)
-        d3 = high_level_features+d3
-        d3 = d3 + self.cbam2(d3)
-        d3 = self.blockconv(d3)
-
-
-
-        p1 = self.decoderconv(d3)
-        p2 = F.interpolate(d3, size=d2.size()[2:], mode='bilinear', align_corners=True)
-        p3 = p2*d2;
-        p3 = F.interpolate(p3, size=d1.size()[2:],mode='bilinear', align_corners=True)
-
-        p4 = F.interpolate(p1,size=d1.size()[2:],mode='bilinear', align_corners=True)
-
-        p5 = torch.cat([p3,p4],dim=1)
-        p5 = p5 + self.cbam3(p5)
-
-        out1 = self.dsv1(p5)
-
-
-        s = self.decoderconv(d2)
-        s1 =  F.interpolate(s,size=d1.size()[2:],mode='bilinear', align_corners=True)
-
-        s2 = s1*d1
-        s3 = torch.cat([s2,p5],dim=1)
-        s3 = s3 + self.cbam4(s3)
-        out2 = self.dsv2(s3)
-        # Decoder
-        out_Muti = torch.cat([out1,out2],dim=1)
-        out_Muti = self.scale(out_Muti)
-        out_Muti = self.conv1(out_Muti)
-        out = self.finaldeconv1(s3)
-        out = self.finalrelu1(out)
-        out = self.finalconv2(out)
-        out = self.finalrelu2(out)
-        out = self.finalconv3(out)
-
-        out = F.interpolate(out, size=(416,416), mode='bilinear', align_corners=True)
-        out = out_Muti + out
-        return [out,out1,out2]
-
-
-class Our_Net_V5_(nn.Module):
-    def __init__(self,in_ch,out_ch):
-        print("Construct MY_NET_version3.0 ...")
-        super(Our_Net_V5_, self).__init__()
-
-        self.deeplabv3 = DeepLab()
-
-        self.conv1 = DoubleConvn(in_ch, 32,0.3)
-        self.pool1 = nn.MaxPool2d(2)
-
-        self.conv2 = DoubleConvn(32, 64,0.5)
-        self.pool2 = nn.MaxPool2d(2)
-
-        self.conv3 = DoubleConvn(64,128,0.5)
-        self.pool3 = nn.MaxPool2d(2)
-
-        self.conv4 = DoubleConvn(128, 256,0.6)
-        self.pool4 = nn.MaxPool2d(2)
-
-        self.conv5 = DoubleConvn(256, 512,0.6)
-
-        self.block3 = MY_ASPP(512)
-
-        self.BAt1 = SAD(32)
-
-        self.BAt2 = SAD(64)
-
-        self.BAt3 = SAD(128)
-        self.BAt4 = SAD(256)
-        self.BAt5 = SAD(512)
-
-        self.blockconv = nn.Sequential(
-            nn.Conv2d(176, 128, 1, bias=False),
-            nn.BatchNorm2d(128),
-            nn.ELU(inplace=True)
-        )
-        self.blockconv1 = nn.Sequential(
-            nn.Conv2d(768, 512, 1, bias=False),
-            nn.BatchNorm2d(512),
-            nn.ELU(inplace=True)
-        )
-
-        self.decoder4 = my_up(512, 256//2)
-        self.decoder3 = my_up1(256, 128//2)
-        self.decoder2 = my_up1(128, 64//2)
-        self.decoder1 = my_up1(64, 32)
-        self.conv = nn.Conv2d(32, 3, kernel_size=1)
-
-    def forward(self,x):
-        high_level_features, low_level_features = self.deeplabv3(x)
-
-        c1=self.conv1(x)
-        att1=self.BAt1(c1)
-
-        p1=self.pool1(c1)
-        c2=self.conv2(p1)
-        att2=self.BAt2(c2)
-
-        p2=self.pool2(c2)
-        c3=self.conv3(p2)
-
-        p3=self.pool3(c3)
-        c4=self.conv4(p3)
-        att4 = self.BAt4(c4)
-
-        p4=self.pool4(c4)
-        c5=self.conv5(p4)
-
-
-        c3 = torch.cat([low_level_features,c3],dim=1) #176
-        c3 = self.blockconv(c3)
-        att3 = self.BAt3(c3)
-
-
-        # print(high_level_features.shape)
-        # print(c5.shape)
-        c5 = torch.cat([high_level_features,c5],dim=1)
-        c5 = self.blockconv1(c5)
-        att5 = self.BAt5(c5)
-
-        d4 = self.decoder4(att5, att4)
-        # out1 = self.dsv1(d4)
-        d3 = self.decoder3(d4, att3)
-        # out2 = self.dsv2(d3)
-        d2 = self.decoder2(d3, att2)
-        # out3 = self.dsv3(d2)
-        d1 = self.decoder1(d2,att1)
-        out = self.conv(d1)
-
-
-
-        return out
 
 class My_CE_Net_(nn.Module):
     def __init__(self, num_classes=3):
@@ -2442,6 +1549,7 @@ class SAD(nn.Module):
         f = self.drop(self.conv6(torch.cat([x6, mb], dim=1)) + x_)
 
         return f
+
 
 
 
